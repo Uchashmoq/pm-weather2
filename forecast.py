@@ -12,7 +12,6 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 forecast_history = {}
-temperature_history = {}
 BASE_DIR = Path(__file__).resolve().parent
 FORECAST_DIR = BASE_DIR / "data" / "forecast"
 FORECAST_HISTORY_FILE = FORECAST_DIR / "forecast_history.pkl"
@@ -100,19 +99,6 @@ async def update_forecast_periotically():
             )
         sleep_seconds = 120
         await asyncio.sleep(sleep_seconds)
-
-
-def update_temperature():
-    for city in config.CITY:
-        city_name = city["name"]
-        wurl = city["wunder_url"]
-        temp = wunderground_temperature(wurl)
-        update_time = int(time.time())
-        if city_name not in temperature_history:
-            temperature_history[city_name] = []
-        temperature_history[city_name].append(
-            {"update_time": update_time, "temperature": temp}
-        )
 
 
 if __name__ == "__main__":
