@@ -10,3 +10,5 @@ CITY = [
         "wunder_url": "https://www.wunderground.com/weather/cn/chongqing/ZUCK",
     }
 ]
+
+FETCH_WUNDERGROUND_INTARVAL = 150
