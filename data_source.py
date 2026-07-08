@@ -18,17 +18,17 @@ def claw_wunderground(url, pattern):
         raise RuntimeError("No data")
 
 
-def wunderground_temperature(url: str) -> int:
+def wunderground_temperature(url: str) -> float:
     pattern = (
         r'<span\b(?=[^>]*class="[^"]*\bwu-unit-temperature\b[^"]*")[^>]*>'
         r"[\s\S]*?"
         r'<span\b(?=[^>]*class="[^"]*\bwu-value\b[^"]*\bwu-value-to\b[^"]*")[^>]*>'
         r"\s*(-?\d+)\s*</span>"
     )
-    return claw_wunderground(url, pattern)
+    return float(claw_wunderground(url, pattern))
 
 
-def wunderground_tomorrow_high(url: str) -> int:
+def wunderground_tomorrow_high(url: str) -> float:
     pattern = (
         r'<span\b[^>]*class="[^"]*\bday\b[^"]*"[^>]*>\s*Tomorrow\s*</span>'
         r"[\s\S]*?"
@@ -36,7 +36,7 @@ def wunderground_tomorrow_high(url: str) -> int:
         r"\s*(-?\d+)\s*</span>\s*&nbsp;"
     )
 
-    return claw_wunderground(url, pattern)
+    return float(claw_wunderground(url, pattern))
 
 
 def ensemble_forcast(lat=29.75, lon=106.75, model="ecmwf_aifs025_ensemble"):
