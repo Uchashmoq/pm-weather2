@@ -79,26 +79,31 @@ signal.signal(signal.SIGTERM, _save_forecast_on_signal)
 
 async def update_forecast_periotically():
     load_forecast()
+    if not forecast_history and logger.isEnabledFor(logging.INFO):
+        logger.info("forecast history is empty")
     while True:
-        updated, new_forecasts = update_forecast()
-        if updated:
-            save_forecast()
-        if new_forecasts and logger.isEnabledFor(logging.INFO):
-            logger.info(
-                "new forecasts: count=%d, forecasts=%s",
-                len(new_forecasts),
-                [
-                    {
-                        "city": fc["city"],
-                        "timestamp": time.strftime(
-                            "%H:%M", time.localtime(fc["timestamp"])
-                        ),
-                    }
-                    for fc in new_forecasts
-                ],
-            )
-        sleep_seconds = 120
-        await asyncio.sleep(sleep_seconds)
+        try:
+            updated, new_forecasts = update_forecast()
+            if updated:
+                save_forecast()
+            if new_forecasts and logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    "new forecasts: count=%d, forecasts=%s",
+                    len(new_forecasts),
+                    [
+                        {
+                            "city": fc["city"],
+                            "timestamp": time.strftime(
+                                "%H:%M", time.localtime(fc["timestamp"])
+                            ),
+                        }
+                        for fc in new_forecasts
+                    ],
+                )
+        except Exception:
+            logger.exception("failed to update forecast")
+
+        await asyncio.sleep(config.FETCH_FORECAST_INTERVAL)
 
 
 if __name__ == "__main__":
@@ -106,5 +111,9 @@ if __name__ == "__main__":
     # print(forecast_history)
     # update_temperature()
     # print(temperature_history)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     asyncio.run(update_forecast_periotically())
