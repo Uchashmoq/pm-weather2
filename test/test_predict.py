@@ -27,7 +27,7 @@ MOCK_FILE = Path(__file__).with_name("essemble_api_mock.json")
 def mock_forecast(*_args, **_kwargs):
     payload = json.loads(MOCK_FILE.read_text())
     df = pd.DataFrame(payload["hourly"])
-    df["time"] = pd.to_datetime(df["time"], utc=True).astype("int64") // 1_000_000_000
+    df["time"] = pd.to_datetime(df["time"], utc=True).astype("int64") // 1_000_000
     return {
         "timestamp": int(df["time"].iloc[0]),
         "lat": payload["latitude"],
@@ -74,6 +74,22 @@ class PredictTest(unittest.TestCase):
         self.assertEqual(updated["timestamp"], fc["timestamp"])
         self.assertEqual(fc["data"][temp_col].iloc[0], 82.1)
         self.assertAlmostEqual(updated["data"][temp_col].iloc[0], 85.1)
+
+    def test_find_every_day_highest_temp_prints_mock_result(self):
+        fc = mock_forecast()
+        city = {"timezone": "UTC+8"}
+        result = predict.find_every_day_highest_temp(
+            fc["data"]["time"],
+            fc["data"]["temperature_2m"],
+            city,
+        )
+
+        print("\nfind_every_day_highest_temp mock result:")
+        print(result)
+
+        self.assertEqual(list(result.columns), ["index", "temperature", "time", "date"])
+        self.assertFalse(result.empty)
+        self.assertEqual(result["date"].nunique(), len(result))
 
 
 class ForecastUpdateTest(unittest.TestCase):
