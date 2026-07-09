@@ -45,7 +45,7 @@ def ensemble_forcast(lat=29.75, lon=106.75, model="ecmwf_aifs025_ensemble"):
         "longitude": lon,
         "hourly": "temperature_2m",
         "models": [model],
-        "forecast_days": 5,
+        "forecast_days": 3,
         "timeformat": "unixtime",
         "wind_speed_unit": "ms",
         "temperature_unit": "fahrenheit",
@@ -53,6 +53,7 @@ def ensemble_forcast(lat=29.75, lon=106.75, model="ecmwf_aifs025_ensemble"):
     resp = requests.get(
         url="https://ensemble-api.open-meteo.com/v1/ensemble", params=params
     ).json()
+
     df = pd.DataFrame()
     for k, v in resp["hourly"].items():
         # k:"temperature_2m_ecmwf_aifs025_ensemble", v: [81.7, 83.2, 85.4, 87.8, 90.3...]   or k: "time", v: [1783382400, 1783386000, 1783389600, 1783393200, 1783396800 ... ]
