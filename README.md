@@ -1,6 +1,6 @@
 # Polymarket Weather Tool 2
-A tool to cauculate the probability of highest temperatures.
-Real-time temperature data crawled from Wunderground.
+A tool to cauculate the probability of highest temperatures.  
+Real-time temperature data crawled from Wunderground.  
 Weather forecast API: open-meteo.com
 
 ## Init
