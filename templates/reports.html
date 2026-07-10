@@ -216,7 +216,7 @@
     <header>
       <div>
         <h1>Weather Reports</h1>
-        <div class="meta">{{ reports|length }} reports</div>
+        <div id="report-count" class="meta">{{ reports|length }} reports</div>
       </div>
     </header>
 
@@ -234,6 +234,7 @@
   <script>
     const pageSize = 30;
     const reportList = document.getElementById("report-list");
+    const reportCount = document.getElementById("report-count");
     const loadState = document.getElementById("load-state");
     const loadTrigger = document.getElementById("load-trigger");
     let offset = {{ reports|length }};
@@ -264,6 +265,7 @@
         reportList.insertAdjacentHTML("beforeend", html);
         const loadedCount = reportList.querySelectorAll(".report").length - offset;
         offset += loadedCount;
+        reportCount.textContent = `${offset} reports`;
         hasMore = loadedCount === pageSize;
         loadState.textContent = "";
       } catch (error) {
