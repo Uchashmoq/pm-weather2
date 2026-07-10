@@ -6,8 +6,47 @@ import forecast
 import real_time_data
 
 
-# fc_time: timestamp of every forecast,fc_temps: temperature in every forecast ,actual_temps: DataFrame with update_time and temperature columns
 def update_forecast(fc_time, fc_temps, actual_temps: pd.DataFrame):
+    """
+    根据最新实测温度对单条预报曲线做一次轻量偏差修正。
+
+    参数说明:
+    - fc_time:
+      预报时间轴，和 `fc_temps` 一一对应，通常是按时间升序排列的时间戳序列。
+    - fc_temps:
+      某一个 forecast member 的温度序列，索引与 `fc_time` 对齐。
+      函数会直接在这个 Series 上更新“未来时刻”的预测值，并返回它。
+    - actual_temps:
+      实测温度表，必须包含两列:
+      `update_time` 表示实测时间戳，
+      `temperature` 表示对应实测温度。
+
+    处理流程:
+    1. 先把 forecast 时间、forecast 温度、实测时间、实测温度转成 numpy 数组，
+       减少 pandas 逐项操作的开销。
+    2. 如果 forecast 点数不足以形成区间，或者没有任何实测数据，直接返回原始预报，
+       偏差值记为 0.0。
+    3. 用 forecast 相邻时间差的中位数估算预报步长 `fc_step`。
+       这个步长后面会用于两个指数衰减:
+       - 计算历史误差加权平均时的时间衰减
+       - 把偏差传播到未来时的修正衰减
+    4. 对每个实测时刻，找到它落在哪两个 forecast 时刻之间，
+       并在该区间内做线性插值，得到“该实测时刻对应的 forecast 温度”。
+    5. 用 `实测温度 - 插值后的 forecast 温度` 得到误差序列 `errs`。
+    6. 对误差做“越新权重越高”的指数加权平均，得到当前整体偏差 `bias`。
+       这会让最近的观测比更早的观测影响更大。
+    7. 只修正“最新实测时刻之后”的 forecast 点，不回写历史区间。
+       修正量是 `bias * exp(-dt / decay_tau)`，也就是离当前越远，修正越弱，
+       避免把当前误差强行施加到很远的未来。
+
+    返回值:
+    - 第一个返回值: 修正后的 `fc_temps`
+    - 第二个返回值: 本次估计得到的整体偏差 `bias`
+
+    注意:
+    - 如果实测时刻全部落在 forecast 范围外，函数不会做修正。
+    - 这里假设 `fc_time` 基本有序且大部分步长为正；若时间轴异常，函数会尽量保守返回原值。
+    """
     fc_time_arr = fc_time.to_numpy(dtype=np.float64, copy=False)
     fc_temp_arr = fc_temps.to_numpy(dtype=np.float64, copy=False)
     actual_time = actual_temps["update_time"].to_numpy(dtype=np.float64, copy=False)
