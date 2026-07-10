@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -37,7 +37,7 @@ def add_diff_marks(report):
     return report
 
 
-def load_reports(limit: int = 100):
+def load_reports(offset: int = 0, limit: int = 30):
     if not REPORT_JSONL_FILE.exists():
         return []
 
@@ -56,13 +56,18 @@ def load_reports(limit: int = 100):
     for report in reports:
         deduped[report_key(report)] = report
 
-    return [add_diff_marks(report) for report in reversed(list(deduped.values())[-limit:])]
+    ordered = sorted(
+        deduped.values(),
+        key=lambda report: report.get("created_at", ""),
+        reverse=True,
+    )
+    return [add_diff_marks(report) for report in ordered[offset : offset + limit]]
 
 
 
 @app.get("/")
-async def reports_page(request: Request, limit: int = 50):
-    reports = load_reports(limit)
+async def reports_page(request: Request, limit: int = 30):
+    reports = load_reports(limit=limit)
     return templates.TemplateResponse(
         request,
         "reports.html",
@@ -75,5 +80,15 @@ async def reports_page(request: Request, limit: int = 50):
 
 
 @app.get("/api/reports")
-async def reports_api(limit: int = 100):
-    return JSONResponse({"reports": load_reports(limit)})
+async def reports_api(offset: int = 0, limit: int = 30):
+    return JSONResponse({"reports": load_reports(offset=offset, limit=limit)})
+
+
+@app.get("/api/reports/fragment", response_class=HTMLResponse)
+async def reports_fragment(request: Request, offset: int = 0, limit: int = 30):
+    reports = load_reports(offset=offset, limit=limit)
+    return templates.TemplateResponse(
+        request,
+        "_report_items.html",
+        {"reports": reports},
+    )

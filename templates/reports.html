@@ -182,6 +182,14 @@
       text-align: center;
     }
 
+    .load-state {
+      min-height: 32px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     @media (max-width: 720px) {
       main {
         width: calc(100vw - 10px);
@@ -217,77 +225,62 @@
       <div class="empty">No reports yet. Start the predictor to append records to report.jsonl.</div>
     {% endif %}
 
-    {% for report in reports %}
-      <section class="report">
-        {% set diff_cells = report.diff_cells %}
-        <div class="report-head">
-          <div>
-            <div class="title">{{ report.city }} · {{ report.model }}</div>
-            <div class="details">
-              created {{ report.created_at }} · forecast updated {{ report.forecast_update_time }}
-            </div>
-          </div>
-        </div>
-
-        <div class="comparison">
-          <div class="pane">
-            <div class="pane-title raw">Before correction</div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    {% for column in report.raw.columns %}
-                      <th>{{ column }}</th>
-                    {% endfor %}
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in report.raw.rows %}
-                    {% set row_idx = loop.index0 %}
-                    <tr>
-                      {% for cell in row %}
-                        {% set cell_key = row_idx ~ ':' ~ loop.index0 %}
-                        <td class="{% if cell_key in diff_cells %}diff{% endif %}">{{ cell }}</td>
-                      {% endfor %}
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="pane">
-            <div class="pane-title calibrated">After correction</div>
-            {% if report.calibrated %}
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      {% for column in report.calibrated.columns %}
-                        <th>{{ column }}</th>
-                      {% endfor %}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for row in report.calibrated.rows %}
-                      {% set row_idx = loop.index0 %}
-                      <tr>
-                        {% for cell in row %}
-                          {% set cell_key = row_idx ~ ':' ~ loop.index0 %}
-                          <td class="{% if cell_key in diff_cells %}diff{% endif %}">{{ cell }}</td>
-                        {% endfor %}
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% else %}
-              <div class="missing">No corrected prediction for this report.</div>
-            {% endif %}
-          </div>
-        </div>
-      </section>
-    {% endfor %}
+    <div id="report-list">
+      {% include "_report_items.html" %}
+    </div>
+    <div id="load-state" class="load-state"></div>
+    <div id="load-trigger"></div>
   </main>
+
+  <script>
+    const pageSize = 30;
+    const reportList = document.getElementById("report-list");
+    const loadState = document.getElementById("load-state");
+    const loadTrigger = document.getElementById("load-trigger");
+    let offset = {{ reports|length }};
+    let loading = false;
+    let hasMore = offset === pageSize;
+
+    async function loadMoreReports() {
+      if (loading || !hasMore) {
+        return;
+      }
+
+      loading = true;
+      loadState.textContent = "Loading...";
+
+      try {
+        const response = await fetch(`/api/reports/fragment?offset=${offset}&limit=${pageSize}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const html = (await response.text()).trim();
+        if (!html) {
+          hasMore = false;
+          loadState.textContent = "";
+          return;
+        }
+
+        reportList.insertAdjacentHTML("beforeend", html);
+        const loadedCount = reportList.querySelectorAll(".report").length - offset;
+        offset += loadedCount;
+        hasMore = loadedCount === pageSize;
+        loadState.textContent = "";
+      } catch (error) {
+        loadState.textContent = "Load failed. Scroll again to retry.";
+      } finally {
+        loading = false;
+      }
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        loadMoreReports();
+      }
+    }, { rootMargin: "300px" });
+
+    observer.observe(loadTrigger);
+  </script>
 </body>
 </html>

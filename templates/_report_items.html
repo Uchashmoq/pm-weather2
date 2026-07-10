@@ -1,0 +1,71 @@
+{% for report in reports %}
+  <section class="report">
+    {% set diff_cells = report.diff_cells %}
+    <div class="report-head">
+      <div>
+        <div class="title">{{ report.city }} · {{ report.model }}</div>
+        <div class="details">
+          created {{ report.created_at }} · forecast updated {{ report.forecast_update_time }}
+        </div>
+      </div>
+    </div>
+
+    <div class="comparison">
+      <div class="pane">
+        <div class="pane-title raw">Before correction</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {% for column in report.raw.columns %}
+                  <th>{{ column }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in report.raw.rows %}
+                {% set row_idx = loop.index0 %}
+                <tr>
+                  {% for cell in row %}
+                    {% set cell_key = row_idx ~ ':' ~ loop.index0 %}
+                    <td class="{% if cell_key in diff_cells %}diff{% endif %}">{{ cell }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="pane-title calibrated">After correction</div>
+        {% if report.calibrated %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {% for column in report.calibrated.columns %}
+                    <th>{{ column }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in report.calibrated.rows %}
+                  {% set row_idx = loop.index0 %}
+                  <tr>
+                    {% for cell in row %}
+                      {% set cell_key = row_idx ~ ':' ~ loop.index0 %}
+                      <td class="{% if cell_key in diff_cells %}diff{% endif %}">{{ cell }}</td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="missing">No corrected prediction for this report.</div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+{% endfor %}
