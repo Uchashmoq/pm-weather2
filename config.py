@@ -1,8 +1,8 @@
 CITY = [
     {
         "name": "Chongqing",
-        "lat": 29.57,
-        "lon": 106.55,
+        "lat": 29.72,
+        "lon": 106.63,
         "timezone": "UTC+8",
         "models": [
             {"name": "ecmwf_aifs025_ensemble", "update_seconds": 6 * 3600},
