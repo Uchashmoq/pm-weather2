@@ -1,42 +1,65 @@
-import re
+import math
+
 import requests
 import pandas as pd
 
-
-def claw_wunderground(url, pattern):
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-
-    html = requests.get(url, headers=headers, timeout=15).text
-    m = re.search(pattern, html)
-    if m:
-        temp = int(m.group(1))
-        return temp
-    else:
-        raise RuntimeError("No data")
+AVIATIONWEATHER_METAR_URL = "https://aviationweather.gov/api/data/metar"
+REQUEST_TIMEOUT_SECONDS = 15
+REQUEST_HEADERS = {
+    "User-Agent": "pm-weather2/1.0",
+    "Accept": "application/json",
+}
 
 
-def wunderground_temperature(url: str) -> float:
-    pattern = (
-        r'<span\b(?=[^>]*class="[^"]*\bwu-unit-temperature\b[^"]*")[^>]*>'
-        r"[\s\S]*?"
-        r'<span\b(?=[^>]*class="[^"]*\bwu-value\b[^"]*\bwu-value-to\b[^"]*")[^>]*>'
-        r"\s*(-?\d+)\s*</span>"
+def aviationweather_temperature(icao: str) -> float:
+    """Return the latest METAR temperature for an ICAO station in Celsius."""
+    station = icao.strip().upper()
+    if not station:
+        raise ValueError("ICAO station identifier must not be empty")
+
+    response = requests.get(
+        AVIATIONWEATHER_METAR_URL,
+        params={"ids": station, "format": "json"},
+        headers=REQUEST_HEADERS,
+        timeout=REQUEST_TIMEOUT_SECONDS,
     )
-    return float(claw_wunderground(url, pattern))
+    response.raise_for_status()
 
+    if response.status_code == 204:
+        raise RuntimeError(f"No METAR data available for {station}")
 
-def wunderground_tomorrow_high(url: str) -> float:
-    pattern = (
-        r'<span\b[^>]*class="[^"]*\bday\b[^"]*"[^>]*>\s*Tomorrow\s*</span>'
-        r"[\s\S]*?"
-        r'<span\b[^>]*class="[^"]*\bwu-value\b[^"]*\bwu-value-to\b[^"]*"[^>]*>'
-        r"\s*(-?\d+)\s*</span>\s*&nbsp;"
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid METAR response for {station}") from exc
+
+    if not isinstance(payload, list) or not payload:
+        raise RuntimeError(f"No METAR data available for {station}")
+
+    observation = next(
+        (
+            item
+            for item in payload
+            if isinstance(item, dict)
+            and str(item.get("icaoId", "")).upper() == station
+        ),
+        None,
     )
+    if observation is None and len(payload) == 1 and isinstance(payload[0], dict):
+        observation = payload[0]
+    if observation is None:
+        raise RuntimeError(f"No METAR data available for {station}")
 
-    return float(claw_wunderground(url, pattern))
+    temperature = observation.get("temp")
+    if temperature is None or isinstance(temperature, bool):
+        raise RuntimeError(f"METAR temperature is unavailable for {station}")
+    try:
+        temperature = float(temperature)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid METAR temperature for {station}") from exc
+    if not math.isfinite(temperature):
+        raise RuntimeError(f"Invalid METAR temperature for {station}")
+    return temperature
 
 
 def ensemble_forcast(lat=29.75, lon=106.75, model="ecmwf_aifs025_ensemble"):
@@ -48,7 +71,7 @@ def ensemble_forcast(lat=29.75, lon=106.75, model="ecmwf_aifs025_ensemble"):
         "forecast_days": 3,
         "timeformat": "unixtime",
         "wind_speed_unit": "ms",
-        "temperature_unit": "fahrenheit",
+        "temperature_unit": "celsius",
     }
     resp = requests.get(
         url="https://ensemble-api.open-meteo.com/v1/ensemble", params=params
@@ -56,7 +79,7 @@ def ensemble_forcast(lat=29.75, lon=106.75, model="ecmwf_aifs025_ensemble"):
 
     df = pd.DataFrame()
     for k, v in resp["hourly"].items():
-        # k:"temperature_2m_ecmwf_aifs025_ensemble", v: [81.7, 83.2, 85.4, 87.8, 90.3...]   or k: "time", v: [1783382400, 1783386000, 1783389600, 1783393200, 1783396800 ... ]
+        # Temperature columns are Celsius; time contains Unix timestamps.
         new_cols = pd.DataFrame({k: v})
         df = pd.concat([df, new_cols], axis=1)
     return {
@@ -68,10 +91,5 @@ def ensemble_forcast(lat=29.75, lon=106.75, model="ecmwf_aifs025_ensemble"):
 
 
 if __name__ == "__main__":
-    # url = "https://www.wunderground.com/weather/cn/chongqing/ZUCK"
-    # # url = "https://www.wunderground.com/weather/kr/incheon/RKSI"
-    # t1 = wunderground_temperature(url)
-    # t2 = wunderground_tomorrow_high(url)
-    # print(f"{url}\nNow: {t1} F\nTomorrow: {t2}F")
     df = ensemble_forcast()
     print(df)

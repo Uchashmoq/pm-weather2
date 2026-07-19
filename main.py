@@ -93,7 +93,7 @@ async def predicting():
                 for model_name, li in forecast_history[city_name].items():
                     if len(li) > 0:
                         fc = li[-1]
-                        res = predict.predict_city(city, fc, correction=False)
+                        res, _ = predict.predict_city(city, fc, correction=False)
                         raw_prediction = {
                             "city": city_name,
                             "model": model_name,
@@ -106,7 +106,7 @@ async def predicting():
                         if city_name in temperature_history:
                             actual_temps = temperature_history[city_name]
                             if len(actual_temps) > 0:
-                                res_calibrated = predict.predict_city(
+                                res_calibrated, member_bias = predict.predict_city(
                                     city, fc, actual_temps, correction=True
                                 )
                                 calibrated_prediction = {

@@ -7,63 +7,24 @@ import real_time_data
 
 
 def update_forecast(fc_time, fc_temps, actual_temps: pd.DataFrame):
-    """
-    根据最新实测温度对单条预报曲线做一次轻量偏差修正。
-
-    参数说明:
-    - fc_time:
-      预报时间轴，和 `fc_temps` 一一对应，通常是按时间升序排列的时间戳序列。
-    - fc_temps:
-      某一个 forecast member 的温度序列，索引与 `fc_time` 对齐。
-      函数会直接在这个 Series 上更新“未来时刻”的预测值，并返回它。
-    - actual_temps:
-      实测温度表，必须包含两列:
-      `update_time` 表示实测时间戳，
-      `temperature` 表示对应实测温度。
-
-    处理流程:
-    1. 先把 forecast 时间、forecast 温度、实测时间、实测温度转成 numpy 数组，
-       减少 pandas 逐项操作的开销。
-    2. 如果 forecast 点数不足以形成区间，或者没有任何实测数据，直接返回原始预报，
-       偏差值记为 0.0。
-    3. 用 forecast 相邻时间差的中位数估算预报步长 `fc_step`。
-       这个步长后面会用于两个指数衰减:
-       - 计算历史误差加权平均时的时间衰减
-       - 把偏差传播到未来时的修正衰减
-    4. 对每个实测时刻，找到它落在哪两个 forecast 时刻之间，
-       并在该区间内做线性插值，得到“该实测时刻对应的 forecast 温度”。
-    5. 用 `实测温度 - 插值后的 forecast 温度` 得到误差序列 `errs`。
-    6. 对误差做“越新权重越高”的指数加权平均，得到当前整体偏差 `bias`。
-       这会让最近的观测比更早的观测影响更大。
-    7. 只修正“最新实测时刻之后”的 forecast 点，不回写历史区间。
-       修正量是 `bias * exp(-dt / decay_tau)`，也就是离当前越远，修正越弱，
-       避免把当前误差强行施加到很远的未来。
-
-    返回值:
-    - 第一个返回值: 修正后的 `fc_temps`
-    - 第二个返回值: 本次估计得到的整体偏差 `bias`
-
-    注意:
-    - 如果实测时刻全部落在 forecast 范围外，函数不会做修正。
-    - 这里假设 `fc_time` 基本有序且大部分步长为正；若时间轴异常，函数会尽量保守返回原值。
-    """
     fc_time_arr = fc_time.to_numpy(dtype=np.float64, copy=False)
     fc_temp_arr = fc_temps.to_numpy(dtype=np.float64, copy=False)
     actual_time = actual_temps["update_time"].to_numpy(dtype=np.float64, copy=False)
     actual_temp = actual_temps["temperature"].to_numpy(dtype=np.float64, copy=False)
+    bias = pd.DataFrame(columns=["time", "actual_temp", "forecast_temp"])
     if len(fc_time_arr) < 2 or len(actual_time) == 0:
-        return fc_temps, 0.0
+        return fc_temps, bias
 
     fc_steps = np.diff(fc_time_arr)
     fc_steps = fc_steps[fc_steps > 0]
     if len(fc_steps) == 0:
-        return fc_temps, 0.0
+        return fc_temps, bias
 
     fc_step = float(np.median(fc_steps))
     interval_idx = np.searchsorted(fc_time_arr, actual_time, side="right") - 1
     valid = (interval_idx >= 0) & (interval_idx + 1 < len(fc_time_arr))
     if not np.any(valid):
-        return fc_temps, 0.0
+        return fc_temps, bias
 
     interval_idx = interval_idx[valid]
     actual_time = actual_time[valid]
@@ -74,12 +35,19 @@ def update_forecast(fc_time, fc_temps, actual_temps: pd.DataFrame):
     fc_temp1 = fc_temp_arr[interval_idx]
     fc_temp2 = fc_temp_arr[interval_idx + 1]
     fc_temp = fc_temp1 + (fc_temp2 - fc_temp1) * (actual_time - fct1) / (fct2 - fct1)
+    bias = pd.DataFrame(
+        {
+            "time": actual_time,
+            "actual_temp": actual_temp,
+            "forecast_temp": fc_temp,
+        }
+    )
     errs = actual_temp - fc_temp
 
     latest_actual_time = actual_time[-1]
     bias_tau = 3.0 * fc_step
     err_weights = np.exp(-(latest_actual_time - actual_time) / bias_tau)
-    bias = float(np.average(errs, weights=err_weights))
+    bias_value = float(np.average(errs, weights=err_weights))
 
     decay_tau = 6.0 * fc_step
     future_idx = np.flatnonzero(fc_time_arr >= latest_actual_time)
@@ -87,7 +55,7 @@ def update_forecast(fc_time, fc_temps, actual_temps: pd.DataFrame):
         return fc_temps, bias
 
     hours_decay = np.exp(-(fc_time_arr[future_idx] - latest_actual_time) / decay_tau)
-    fc_temps.iloc[future_idx] = fc_temp_arr[future_idx] + bias * hours_decay
+    fc_temps.iloc[future_idx] = fc_temp_arr[future_idx] + bias_value * hours_decay
     return fc_temps, bias
 
 
@@ -105,26 +73,28 @@ def bias_correction(fc, actual_temps: pd.DataFrame):
     fc_time = df["time"]
     start = get_temp_index(fc_time, actual_temps)
     if start == -1:
-        return fc.copy()
+        return fc.copy(), {}
 
     actual_temps = actual_temps.iloc[start:]
+    member_bias = {}
     for col_name in df.columns:
         if col_name == "time":
             continue
 
         fc_temps = df[col_name]
-        df[col_name], _ = update_forecast(fc_time, fc_temps, actual_temps)
+        df[col_name], bias = update_forecast(fc_time, fc_temps, actual_temps)
+        member_bias[col_name] = bias
 
     updated_fc = fc.copy()
     updated_fc["data"] = df
-    return updated_fc
+    return updated_fc, member_bias
 
 
 def find_every_day_highest_temp(fc_time, fc_temps, timezone):
     """
     返回4列df，col0:fc_temps里每日最高温索引，col1每日最高温，col2每日最高温时间，col3日期
     fc_time代表每个温度的时间戳
-    fc_temps代表未来数十小时的气温预测，每日最高温相当于局部最大值 [83.4, 85.1, 87.7, 90.6, 93.4, 95.8, 97.2, 97.6, 97.5, 96.7, 95.8, 94.6, 93.5, 92.2, 90.5, 88.7, 87, 85.6, 84.5, 83.9, 83.3, 83.2, 83.2, 83.7, 84.6, 86.3]
+    fc_temps代表未来数十小时的摄氏气温预测，每日最高温相当于局部最大值
     """
     temps = np.asarray(fc_temps)
     times = np.asarray(fc_time)
@@ -164,15 +134,14 @@ def find_every_day_highest_temp(fc_time, fc_temps, timezone):
 
 
 def fit_question(q, v, unit="C"):
-    q1 = q
-    if unit == "C":
-        q1 = [t * 9 / 5 + 32 for t in q]
-    if v < q1[0]:
+    if str(unit).strip().lower() not in {"c", "°c", "celsius"}:
+        raise ValueError("Only Celsius temperature thresholds are supported")
+    if v < q[0]:
         return q[0], 0
-    if v >= q1[-1]:
+    if v >= q[-1]:
         return q[-1], len(q) - 1
     for i in range(len(q) - 1):
-        if q1[i] <= v < q1[i + 1]:
+        if q[i] <= v < q[i + 1]:
             return q[i], i
     return 0, 0
 
@@ -182,12 +151,15 @@ report: date, outcome1, outcome2 ...
 """
 
 
-def predict_city(city, fc, actual_temps=None, questions=None, correction=True):
+def predict_city(
+    city, fc, actual_temps=None, questions=None, correction=True
+) -> tuple[pd.DataFrame, dict]:
     if questions == None:
         questions = city["questions"]
     questions = list(questions)
+    bias = {}
     if actual_temps is not None and correction:
-        fc = bias_correction(fc, actual_temps)
+        fc, bias = bias_correction(fc, actual_temps)
     df: pd.DataFrame = fc["data"]
     fc_time = df["time"].tolist()
     highest_temp_of_member = {}
@@ -222,4 +194,4 @@ def predict_city(city, fc, actual_temps=None, questions=None, correction=True):
         probs = [c / n_members for c in ocnt]
         report.loc[len(report)] = [date] + probs
 
-    return report
+    return report, bias

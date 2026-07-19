@@ -1,4 +1,4 @@
-from data_source import ensemble_forcast, wunderground_temperature
+from data_source import aviationweather_temperature
 import config
 import atexit
 import asyncio
@@ -20,11 +20,14 @@ TEMPERATURE_HISTORY_FILE = TEMPERATURE_DIR / "temperature_history.pkl"
 
 def update_temperature():
     new_temperatures = []
+    temperatures_by_station = {}
+    update_time = int(time.time())
     for city in config.CITY:
         city_name = city["name"]
-        wurl = city["wunder_url"]
-        temp = wunderground_temperature(wurl)
-        update_time = int(time.time())
+        station = city["ICAO"].strip().upper()
+        if station not in temperatures_by_station:
+            temperatures_by_station[station] = aviationweather_temperature(station)
+        temp = temperatures_by_station[station]
 
         if city_name not in temperature_history:
             temperature_history[city_name] = pd.DataFrame(
@@ -89,4 +92,4 @@ async def update_temperature_periotically():
 
         except Exception:
             logger.exception(f"failed to update temperature")
-        await asyncio.sleep(config.FETCH_WUNDERGROUND_INTARVAL)
+        await asyncio.sleep(config.FETCH_AVIATIONWEATHER_INTERVAL)

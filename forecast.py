@@ -1,4 +1,4 @@
-from data_source import ensemble_forcast, wunderground_temperature
+from data_source import ensemble_forcast
 import config
 import atexit
 import asyncio
