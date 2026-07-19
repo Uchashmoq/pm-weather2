@@ -13,9 +13,9 @@ pip install requests pandas numpy fastapi "uvicorn[standard]" jinja2
 
 ## Run
 ```bash
-python3 main.py
-python3 main.py --web
-python3 main.py --web --web-host 0.0.0.0 --web-port 8000
+python main.py
+python main.py --web
+python main.py --web --web-host 0.0.0.0 --web-port 8000
 ```
 
 When `--web` is enabled, reports are shown at `http://127.0.0.1:8000`.
